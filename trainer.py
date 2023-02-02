@@ -1,5 +1,6 @@
 # imports
 import os
+import time
 import random
 import numpy as np
 from tqdm import tqdm
@@ -43,12 +44,14 @@ class Trainer:
     
     def train(self, rank):
         model, train_config = self.model, self.train_config
-        scaler = GradScaler()
+        scaler = GradScaler(enabled=train_config.mixed_precision)
         self.setup(rank)
         model = model.to(rank)
         model = DDP(model, device_ids=[rank], find_unused_parameters=train_config.find_unused_parameters)
         raw_model = model.module if hasattr(model, "module") else model
         optimizer = raw_model.configure_optimizers(train_config)
+        if train_config.lr_scheduler is not None:
+            lr_scheduler = raw_model.configure_lr_schedulers(train_config)
         
         def run_epoch(split):
             is_train = split == 'train'
@@ -77,32 +80,55 @@ class Trainer:
                                 generator=generator,
                                 sampler=distributed_sampler)
             
-            losses = []
-            pbar = tqdm(enumerate(loader), total=len(loader)) if (is_train and rank == 0) else enumerate(loader)
-            for it, batch in pbar:
+            pbar = tqdm(enumerate(loader), total=len(loader)) if is_train else enumerate(loader)
+            for _, batch in pbar:
+                batch_start = time.perf_counter()
+                
                 with torch.set_grad_enabled(is_train):
-                    output_dict = model(batch)
-                    loss = output_dict['loss']
-                    losses.append(loss.item())
+                    with torch.autocast('cuda', enabled=train_config.mixed_precision):
+                        loss = model(batch)
                 
                 if is_train:
-                    model.zero_grad()
-                    # look at waifu diffusion code on how to do this better
                     scaler.scale(loss).backward()
                     if train_config.grad_norm_clip is not None:
                         scaler.unscale_(optimizer)
                         torch.nn.utils.clip_grad_norm_(model.parameters(), train_config.grad_norm_clip)
                     scaler.step(optimizer)
                     scaler.update()
+                    if train_config.lr_scheduler is not None:
+                        lr_scheduler.step()
+                    optimizer.zero_grad()
+                
+                batch_end = time.perf_counter()
+                steps_per_second = 1 / (batch_end - batch_start)
+                rank_samples_per_second = train_config.batch_size * steps_per_second
+                global_samples_per_second = rank_samples_per_second * train_config.world_size
+                samples_seen = global_step * train_config.batch_size * train_config.world_size
+                
+                dist.all_reduce(loss, op=dist.ReduceOp.SUM)
+                loss = loss / train_config.world_size
 
-                    if rank == 0:
-                        lr = optimizer.param_groups[0]['lr']
-                        pbar.set_description(f'epoch {epoch} iter {it}: train loss {loss.item():.5f}. lr {lr:e}')
-            
-            return float(np.mean(losses))
+                if is_train and rank == 0:
+                    pbar.update(1)
+                    global_step += 1
+                    learning_rate = train_config.learning_rate if train_config.lr_scheulder is None \
+                        else lr_scheduler.get_last_lr()[0]
+                    logs = {
+                        'train/loss': loss.detach().item(),
+                        'train/lr': learning_rate,
+                        'train/epoch': epoch,
+                        'train/step': global_step,
+                        'train/samples_seen': samples_seen,
+                        'perf/rank_samples_per_second': rank_samples_per_second,
+                        'perf/global_samples_per_second': global_samples_per_second
+                    }
+                    pbar.set_postfix(logs)
+                        
+            return loss
         
+        global_step = 0
         best_loss = float('inf')
-        for epoch in range(train_config.max_epochs):
+        for epoch in range(train_config.epochs):
             _ = run_epoch('train')
             if self.test_dataset is None:
                 self.save_checkpoint(model)
