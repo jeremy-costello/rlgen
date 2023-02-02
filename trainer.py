@@ -83,13 +83,14 @@ class Trainer:
             pbar = tqdm(enumerate(loader), total=len(loader)) if is_train else enumerate(loader)
             for _, batch in pbar:
                 batch_start = time.perf_counter()
-                
+
                 with torch.set_grad_enabled(is_train):
                     with torch.autocast('cuda', enabled=train_config.mixed_precision):
                         loss = model(batch)
                 
                 if is_train:
                     scaler.scale(loss).backward()
+                    # all below should only run on on gradient accumulation step
                     if train_config.grad_norm_clip is not None:
                         scaler.unscale_(optimizer)
                         torch.nn.utils.clip_grad_norm_(model.parameters(), train_config.grad_norm_clip)
@@ -97,7 +98,7 @@ class Trainer:
                     scaler.update()
                     if train_config.lr_scheduler is not None:
                         lr_scheduler.step()
-                    optimizer.zero_grad()
+                    model.zero_grad()
                 
                 batch_end = time.perf_counter()
                 steps_per_second = 1 / (batch_end - batch_start)
