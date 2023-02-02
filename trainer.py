@@ -14,6 +14,9 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 
+# add WD stuff (8-bit adam, xformers, etc.)
+
+
 class Trainer:
     def __init__(self, model, train_dataset, test_dataset, train_config):
         self.model = model
@@ -132,11 +135,13 @@ class Trainer:
         for epoch in range(train_config.epochs):
             _ = run_epoch('train')
             if self.test_dataset is None:
-                self.save_checkpoint(model)
+                if rank == 0:
+                    self.save_checkpoint(model)
             else:
                 test_loss = run_epoch('test')
                 if test_loss < best_loss:
                     best_loss = test_loss
-                    self.save_checkpoint(model)
+                    if rank == 0:
+                        self.save_checkpoint(model)
         
         self.cleanup()
