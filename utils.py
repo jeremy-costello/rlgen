@@ -22,3 +22,7 @@ def get_activation(activation_name):
         return nn.GELU()
     else:
         raise ValueError("Invalid activation name!")
+
+
+def configure_optimizers():
+    pass

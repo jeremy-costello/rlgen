@@ -1,19 +1,21 @@
-# imports
 import math
+import numpy as np
+
 import torch
 import torch.nn as nn
 from torch.distributions.normal import Normal
 
 from encoder import Encoder
 from decoder import Decoder
+from utils import configure_optimizers
 
 
 class ModelConfig:
     def __init__(self):
         self.conditional = True
         self.num_labels = 10
-        self.latent_size = 20
         self.input_size = 28 * 28
+        self.latent_size = 20
         self.dropout = 0.5
         self.initialization = 'normal'
         self.normalization = 'group'
@@ -31,6 +33,7 @@ class Model(nn.Module):
             assert model_config.num_labels > 0
         
         self.input_size = model_config.input_size
+        self.latent_size = model_config.latent_size
         self.sqrt2pi = math.sqrt(2 * math.pi)
 
         assert isinstance(model_config.latent_size, int)
@@ -39,10 +42,14 @@ class Model(nn.Module):
 
         self.actor = Encoder(model_config)
         self.target_actor = Encoder(model_config)
-        self.environment = Decoder(model_config)
+        self.critic = Decoder(model_config)
 
         self.apply(self._init_weights)
         self._update_param()
+
+        self.eta = np.random.rand()
+        self.alpha_mu = 0.0
+        self.alpha_sigma = 0.0
     
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -52,15 +59,38 @@ class Model(nn.Module):
         for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
             target_param.data.copy_(param.data)
     
+    def _configure_optimizers(self, train_config):
+        optimizer = configure_optimizers(self, train_config)
+        return optimizer
+    
     def forward(self, x, c=None):
-        mean, log_var = self.encoder(x, c)
+        with torch.no_grad():
+            baseline_mean, baseline_log_var = self.target_actor(x, c)
+        
+        mean, log_var = self.actor(x, c)
 
         latent_distribution = Normal(mean, torch.exp(0.5 * log_var))
         action = latent_distribution.rsample()
         z = (1 / (torch.exp(0.5 * log_var) * self.sqrt2pi)) \
             * torch.exp(-0.5 * (action - mean) ** 2 / torch.exp(log_var))
         
-        recon_x = self.decoder(z, c)
+        recon_x = self.critic(z, c)
+
+        reward = self.loss_fn(x, recon_x, baseline_mean, baseline_log_var, mean, log_var)
+        return reward
     
+    def loss_fn(self, x, recon_x, baseline_mean, baseline_log_var, mean, log_var, epsilon=1e-8):
+        baseline_sigma = torch.exp(0.5 * baseline_log_var)
+        sigma = torch.exp(0.5 * log_var)
+
+        recon_loss = -1.0 * torch.sum(x * torch.log(recon_x + epsilon), dim=-1)
+        kl_loss = self.kl_divergence(baseline_mean, baseline_sigma, mean, sigma)
+
+        reward = recon_loss + kl_loss
+        return reward.mean()
+
     def kl_divergence(self, p_mean, p_sigma, q_mean, q_sigma):
-        pass
+        var_division = torch.sum(p_sigma ** 2 / q_sigma ** 2, dim=-1)
+        diff_term = torch.sum((q_mean - p_mean) ** 2 / q_sigma ** 2, dim=-1)
+        logvar_det_division = torch.sum(torch.log(q_sigma ** 2) - torch.log(p_sigma ** 2), dim=-1)
+        return 0.5 * (var_division + diff_term - self.latent_size + logvar_det_division)
