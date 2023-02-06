@@ -19,7 +19,7 @@ class ModelConfig:
         self.normalization = 'group'
         self.encoder_layers = [1024, 1024]
         self.decoder_layers = [1024, 1024]
-        self.activation = 'geglu'
+        self.activation = 'gelu'
 
 
 class Model(nn.Module):
@@ -37,8 +37,20 @@ class Model(nn.Module):
         assert isinstance(model_config.encoder_layers, list)
         assert isinstance(model_config.decoder_layers, list)
 
-        self.encoder = Encoder(model_config)
-        self.decoder = Decoder(model_config)
+        self.actor = Encoder(model_config)
+        self.target_actor = Encoder(model_config)
+        self.environment = Decoder(model_config)
+
+        self.apply(self._init_weights)
+        self._update_param()
+    
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    
+    def _update_param(self):
+        for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
+            target_param.data.copy_(param.data)
     
     def forward(self, x, c=None):
         mean, log_var = self.encoder(x, c)

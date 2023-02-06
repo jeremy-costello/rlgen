@@ -13,3 +13,12 @@ class GeGLU(nn.Module):
     def forward(self, x: torch.Tensor):
         x, gate = self.proj(x).chunk(2, dim=-1)
         return x * F.gelu(gate)
+
+
+def get_activation(activation_name):
+    if activation_name.lower() == 'geglu':
+        return GeGLU()
+    elif activation_name.lower() == 'gelu':
+        return nn.GELU()
+    else:
+        raise ValueError("Invalid activation name!")

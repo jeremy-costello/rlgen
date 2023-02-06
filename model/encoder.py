@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..utils import GeGLU
+from ..utils import get_activation
 
 
 class Encoder(nn.Module):
@@ -11,7 +11,7 @@ class Encoder(nn.Module):
         self.conditional = model_config.conditional
         self.num_labels = model_config.num_labels
 
-        self.activation = GeGLU()
+        self.activation = get_activation(model_config.activation)
 
         self.layers = nn.ModuleList([])
         for (in_feat, out_feat) in zip([model_config.input_size] + model_config.encoder_layers[:-1],

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..utils import GeGLU
+from ..utils import get_activation
 
 
 class Decoder(nn.Module):
@@ -11,7 +11,7 @@ class Decoder(nn.Module):
         self.conditional = model_config.conditional
         self.num_labels = model_config.num_labels
 
-        self.activation = GeGLU()
+        self.activation = get_activation(model_config.activation)
 
         latent_size = model_config.latent_size + int(self.conditional) * self.num_labels
 
