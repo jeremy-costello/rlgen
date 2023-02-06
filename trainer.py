@@ -14,9 +14,6 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 
-# add WD stuff (8-bit adam, xformers, etc.)
-
-
 class Trainer:
     def __init__(self, model, train_dataset, test_dataset, train_config):
         self.model = model
@@ -91,6 +88,7 @@ class Trainer:
                     with torch.autocast('cuda', enabled=train_config.mixed_precision):
                         loss = model(batch)
                 
+                # could put m-step loop from MPO here? or have this and a bit higher in separate file
                 if is_train:
                     scaler.scale(loss).backward()
                     # all below should only run on on gradient accumulation step

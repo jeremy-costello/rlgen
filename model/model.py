@@ -7,7 +7,7 @@ from torch.distributions.normal import Normal
 
 from encoder import Encoder
 from decoder import Decoder
-from utils import configure_optimizers
+from model.model_utils import configure_optimizers
 
 
 class ModelConfig:
@@ -47,13 +47,17 @@ class Model(nn.Module):
         self.apply(self._init_weights)
         self._update_param()
 
+        # MPO parameters
         self.eta = np.random.rand()
         self.alpha_mu = 0.0
         self.alpha_sigma = 0.0
     
+    @torch.no_grad()
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                module.bias.data.zero_()
     
     def _update_param(self):
         for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
