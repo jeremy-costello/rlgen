@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+# https://nn.labml.ai/diffusion/stable_diffusion/model/unet_attention.html
 class GeGLU(nn.Module):
     def __init__(self, d_in: int, d_out: int):
         super().__init__()

@@ -8,9 +8,6 @@ from encoder import Encoder
 from decoder import Decoder
 
 
-# https://nn.labml.ai/diffusion/stable_diffusion/model/unet_attention.html
-
-
 class ModelConfig:
     def __init__(self):
         self.conditional = True
