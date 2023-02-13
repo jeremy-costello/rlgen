@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..utils import get_activation
+from .model_utils import get_activation
 
 
-class Encoder(nn.Module):
+class Critic(nn.Module):
     def __init__(self, model_config):
         super().__init__()
 
@@ -13,15 +13,14 @@ class Encoder(nn.Module):
 
         self.activation = get_activation(model_config.activation)
 
+        latent_size = model_config.latent_size + int(self.conditional) * self.num_labels
+
         self.layers = nn.ModuleList([])
-        for (in_feat, out_feat) in zip([model_config.input_size] + model_config.encoder_layers[:-1],
-                                       model_config.encoder_layers):
+        for (in_feat, out_feat) in zip([latent_size] + model_config.encoder_layers,
+                                       model_config.encoder_layers + [model_config.input_size]):
             self.layers.append(nn.ModuleList([nn.Linear(in_feat, out_feat),
                                               self.activation,
                                               nn.Dropout(p=model_config.dropout)]))
-
-        self.linear_mean = nn.Linear(model_config.encoder_layers[-1], model_config.latent_size)
-        self.linear_log_var = nn.Linear(model_config.encoder_layers[-1], model_config.latent_size)
 
     def forward(self, x, c=None):
         if self.conditional:
@@ -32,8 +31,5 @@ class Encoder(nn.Module):
             x = linear(x)
             x = activation(x)
             x = dropout(x)
-        
-        mean = self.linear_mean(x)
-        log_var = self.linear_log_var(x)
 
-        return mean, log_var
+        return x

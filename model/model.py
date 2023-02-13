@@ -5,29 +5,12 @@ import torch
 import torch.nn as nn
 from torch.distributions.normal import Normal
 
-from encoder import Encoder
-from decoder import Decoder
-from model.model_utils import configure_optimizers
+from artist import Artist
+from critic import Critic
 
 
-class ModelConfig:
-    def __init__(self):
-        self.conditional = True
-        self.num_labels = 10
-        self.input_size = 28 * 28
-        self.latent_size = 20
-        self.dropout = 0.5
-        self.initialization = 'normal'
-        self.normalization = 'group'
-        self.encoder_layers = [1024, 1024]
-        self.decoder_layers = [1024, 1024]
-        self.activation = 'gelu'
-
-
-class Model(nn.Module):
+class Model(object):
     def __init__(self, model_config):
-        super().__init__()
-
         if model_config.conditional:
             assert isinstance(model_config.num_labels, int)
             assert model_config.num_labels > 0
@@ -40,11 +23,16 @@ class Model(nn.Module):
         assert isinstance(model_config.encoder_layers, list)
         assert isinstance(model_config.decoder_layers, list)
 
-        self.actor = Encoder(model_config)
-        self.target_actor = Encoder(model_config)
-        self.critic = Decoder(model_config)
+        self.artist = Artist(model_config)
+        self.target_artist = Artist(model_config)
+        self.critic = Critic(model_config)
+        self.target_critic = Critic(model_config)
 
-        self.apply(self._init_weights)
+        self.artist.apply(self._init_weights)
+        self.target_artist.apply(self._init_weights)
+        self.critic.apply(self._init_weights)
+        self.target_critic.apply(self._init_weights)
+
         self._update_param()
 
         # MPO parameters
@@ -60,25 +48,23 @@ class Model(nn.Module):
                 module.bias.data.zero_()
     
     def _update_param(self):
-        for target_param, param in zip(self.target_actor.parameters(), self.actor.parameters()):
+        for target_param, param in zip(self.target_artist.parameters(), self.artist.parameters()):
             target_param.data.copy_(param.data)
     
-    def _configure_optimizers(self, train_config):
-        optimizer = configure_optimizers(self, train_config)
-        return optimizer
-    
-    def forward(self, x, c=None):
+    def training_step(self, x, c=None):
         with torch.no_grad():
-            baseline_mean, baseline_log_var = self.target_actor(x, c)
+            baseline_mean, baseline_log_var = self.target_artist.forward(x, c)
+            baseline_distribution = Normal(baseline_mean, torch.exp(0.5 * baseline_log_var))
         
-        mean, log_var = self.actor(x, c)
+        mean, log_var = self.artist(x)
 
-        latent_distribution = Normal(mean, torch.exp(0.5 * log_var))
-        action = latent_distribution.rsample()
+        distribution = Normal(mean, torch.exp(0.5 * log_var))
+        action = distribution.rsample()
         z = (1 / (torch.exp(0.5 * log_var) * self.sqrt2pi)) \
             * torch.exp(-0.5 * (action - mean) ** 2 / torch.exp(log_var))
         
-        recon_x = self.critic(z, c)
+        # c is kind of like a state. could be text embedding for guidance
+        recon_x = self.critic.forward(z, c)
 
         reward = self.loss_fn(x, recon_x, baseline_mean, baseline_log_var, mean, log_var)
         return reward

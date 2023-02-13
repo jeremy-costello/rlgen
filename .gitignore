@@ -129,4 +129,6 @@ dmypy.json
 .pyre/
 
 # CUSTOM
-notes.txt
+*notes.txt
+*process.pptx
+*architecture.txt
