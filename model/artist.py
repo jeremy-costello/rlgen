@@ -6,7 +6,24 @@ from torch.distributions import MultivariateNormal
 from .model_utils import get_activation
 
 
-class Artist(nn.Module):
+class NormalArtist(nn.Module):
+    def __init__(self, model_config):
+        super().__init__()
+
+        self.activation = get_activation(model_config.activation)
+
+        self.layers = nn.ModuleList([])
+        for (in_feat, out_feat) in zip([model_config.input_size] + model_config.encoder_layers[:-1],
+                                       model_config.encoder_layers):
+            self.layers.append(nn.ModuleList([nn.Linear(in_feat, out_feat),
+                                              self.activation,
+                                              nn.Dropout(p=model_config.dropout)]))
+    
+    def forward(self, state):
+        pass
+
+
+class MultiVariateNormalArtist(nn.Module):
     def __init__(self, model_config, env):
         super().__init__()
 

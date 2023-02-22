@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch.distributions.normal import Normal
 
-from artist import Artist
+from artist import NormalArtist, MultiVariateNormalArtist
 from critic import Critic
 
 
@@ -23,8 +23,8 @@ class Model(object):
         assert isinstance(model_config.encoder_layers, list)
         assert isinstance(model_config.decoder_layers, list)
 
-        self.artist = Artist(model_config)
-        self.target_artist = Artist(model_config)
+        self.artist = NormalArtist(model_config)
+        self.target_artist = NormalArtist(model_config)
         self.critic = Critic(model_config)
         self.target_critic = Critic(model_config)
 
