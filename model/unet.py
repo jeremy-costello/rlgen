@@ -12,6 +12,7 @@ class UNet(nn.Module):
 
         assert isinstance(arch_dict['image_channels'], int)
         assert isinstance(arch_dict['initial_channels'], int)
+        assert isinstance(arch_dict['resize_blocks'], list)
         assert isinstance(arch_dict['middle_blocks'], int)
 
         self.resize_blocks = arch_dict['resize_blocks']

@@ -129,6 +129,7 @@ dmypy.json
 .pyre/
 
 # CUSTOM
+*scratch.py
 *notes.txt
 *process.pptx
 *architecture.txt
